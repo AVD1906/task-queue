@@ -1,0 +1,64 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: taskqueue
+      POSTGRES_PASSWORD: taskqueue
+      POSTGRES_DB: taskqueue
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'taskqueue']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    ports:
+      - '8081:8081'
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+
+  api:
+    build: ./apps/api
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgresql://taskqueue:taskqueue@postgres:5432/taskqueue
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: ./apps/worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgresql://taskqueue:taskqueue@postgres:5432/taskqueue
+      WORKER_ID: worker-1
+      QUEUES: email,image,report
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  
